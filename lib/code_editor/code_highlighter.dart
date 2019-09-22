@@ -5,7 +5,6 @@ import 'package:rich_code_editor/code_editor/widgets/code_editing_value.dart';
 
 // This is the interface that must be implemented by Syntax highlighter's for each programming language
 abstract class CodeEditingValueHighlighterBase {
-
   /// This is the main method that must be implemented by each highlighter.
   CodeEditingValue parse(
       {@required CodeEditingValue oldValue,
@@ -28,20 +27,20 @@ abstract class CodeEditingValueHighlighterBase {
 
     parent.visitChildren((inline) {
       var tspan = inline as TextSpan;
-      if(i > 0 && tspan.children!= null) {
+      if (i > 0 && tspan.children != null) {
         i -= tspan.children.length;
       }
       offset += tspan.text.length;
-      
-      if(offset >= targetOffset) {
+
+      if (offset >= targetOffset) {
         map[i] = tspan;
         return false;
       }
-      if(offset > 0) {
+      if (offset > 0) {
         i++;
-      }      
+      }
       return true;
-    });    
+    });
     return map;
   }
 
@@ -67,10 +66,12 @@ class DummyHighlighter extends CodeEditingValueHighlighterBase {
       {@required CodeEditingValue oldValue,
       @required CodeEditingValue newValue,
       @required TextStyle style}) {
+
     if (_equalTextValue(oldValue, newValue)) {
-      return oldValue;
+      return newValue;
     } else if (_sameTextDiffSelection(oldValue, newValue)) {
-      return newValue.copyWith(value: oldValue.value);
+      return newValue.copyWith(
+          value: oldValue.value, selection: newValue.selection);
     }
 
     var plainStyle = TextStyle(fontSize: 16.0, color: Colors.black);
@@ -78,7 +79,7 @@ class DummyHighlighter extends CodeEditingValueHighlighterBase {
     final TextSelection newSelection = newValue.selection;
 
     if (_enterPressed(oldValue, newValue)) {
-      return addTextRemotely(newValue, "    ");
+//      return addTextRemotely(newValue, "    ");
     }
 
     var ls = _getTextSpans(newValue.text);
@@ -157,7 +158,7 @@ class DummyHighlighter extends CodeEditingValueHighlighterBase {
         value: new TextSpan(text: "", style: plainStyle, children: ls),
         selection: TextSelection.fromPosition(TextPosition(
             affinity: TextAffinity.downstream,
-            offset: currentSelection.start + newText.length)));
+            offset: currentSelection.start + newText.length-1)));
 
     return oldValue;
   }

@@ -7,6 +7,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter/rendering.dart' show ViewportOffset, RenderEditable;
 import 'package:flutter/scheduler.dart';
@@ -297,6 +298,7 @@ class CodeEditableText extends StatefulWidget {
     this.onChanged,
     this.onEditingComplete,
     this.onSubmitted,
+    this.onRectChanged,
     this.onSelectionChanged,
     this.onSelectionHandleTapped,
     List<TextInputFormatter> inputFormatters,
@@ -679,6 +681,9 @@ class CodeEditableText extends StatefulWidget {
   /// Providing [onEditingComplete] prevents the aforementioned default behavior.
   /// {@endtemplate}
   final VoidCallback onEditingComplete;
+
+  //
+  final ValueChanged<Rect> onRectChanged;
 
   /// {@template flutter.widgets.CodeEditableText.onSubmitted}
   /// Called when the user indicates that they are done editing the text in the
@@ -1167,11 +1172,13 @@ class CodeEditableTextState extends State<CodeEditableText>
   }
 
   CodeEditingValue get _value => widget.controller.value;
+
   set _value(CodeEditingValue value) {
     widget.controller.value = value;
   }
 
   bool get _hasFocus => widget.focusNode.hasFocus;
+
   bool get _isMultiline => widget.maxLines != 1;
 
   // Calculate the new scroll offset so the cursor remains visible.
@@ -1193,6 +1200,7 @@ class CodeEditableTextState extends State<CodeEditableText>
 
     double scrollOffset = _scrollController.offset;
     final double viewportExtent = _scrollController.position.viewportDimension;
+
     if (caretStart < 0.0) {
       // cursor before start of bounds
       scrollOffset += caretStart;
@@ -1200,6 +1208,9 @@ class CodeEditableTextState extends State<CodeEditableText>
       // cursor after end of bounds
       scrollOffset += caretEnd - viewportExtent;
     }
+
+    print("position: $scrollOffset");
+
     return scrollOffset;
   }
 
@@ -1385,7 +1396,7 @@ class CodeEditableTextState extends State<CodeEditableText>
             .height;
         final double interactiveHandleHeight = math.max(
           handleHeight,
-          kMinInteractiveSize,
+          kMinInteractiveDimension,
         );
         final Offset anchor =
             _selectionOverlay.selectionControls.getHandleAnchor(
@@ -1404,6 +1415,11 @@ class CodeEditableTextState extends State<CodeEditableText>
         newCaretRect.right + widget.scrollPadding.right,
         newCaretRect.bottom + bottomSpacing,
       );
+
+      if (widget.onRectChanged != null) {
+        widget.onRectChanged(inflatedRect);
+      }
+
       _editableKey.currentContext.findRenderObject().showOnScreen(
             rect: inflatedRect,
             duration: _caretAnimationDuration,
@@ -1544,7 +1560,9 @@ class CodeEditableTextState extends State<CodeEditableText>
     _textChangedSinceLastCaretUpdate = true;
     // TODO(abarth): Teach RenderEditable about ValueNotifier<CodeEditingValue>
     // to avoid this setState().
-    setState(() {/* We use widget.controller.value in build(). */});
+    setState(() {
+      /* We use widget.controller.value in build(). */
+    });
   }
 
   void _handleFocusChanged() {
@@ -1589,6 +1607,10 @@ class CodeEditableTextState extends State<CodeEditableText>
 
   @override
   void bringIntoView(TextPosition position) {
+    if (widget.onRectChanged != null) {
+      widget.onRectChanged(renderEditable.getLocalRectForCaret(position));
+    }
+
     _scrollController.jumpTo(_getScrollOffsetForCaret(
         renderEditable.getLocalRectForCaret(position)));
   }
