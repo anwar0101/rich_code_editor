@@ -13,14 +13,12 @@ import 'package:rich_code_editor/code_editor/widgets/code_selection.dart' as cs;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:rich_code_editor/code_editor/widgets/code_editable.dart' as ce;
-import 'package:rich_code_editor/code_editor/widgets/material_selection.dart'
-    as ms;
+import 'package:rich_code_editor/code_editor/widgets/material_selection.dart' as ms;
 
 import 'code_editable_text.dart';
 import 'code_editing_value.dart';
 
-export 'package:flutter/services.dart'
-    show TextInputType, TextInputAction, TextCapitalization;
+export 'package:flutter/services.dart' show TextInputType, TextInputAction, TextCapitalization;
 
 /// Signature for the [CodeTextField.buildCounter] callback.
 typedef InputCounterWidgetBuilder = Widget Function(
@@ -163,7 +161,11 @@ class CodeTextField extends StatefulWidget {
     this.expands = false,
     this.maxLength,
     this.maxLengthEnforced = true,
+    this.hideKeyboardUntilTapped = false,
     this.onChanged,
+    this.onBackSpacePress,
+    this.onEnterPress,
+    this.onPasteAction,
     this.onEditingComplete,
     this.onSubmitted,
     this.onRectChanged,
@@ -381,6 +383,11 @@ class CodeTextField extends StatefulWidget {
   /// [maxLength] is exceeded.
   final bool maxLengthEnforced;
 
+  /// If this value is false, we do not show keyboard on the first load.
+  /// Only after a tap, the keyboard will become.
+  /// So the widget will display a cursor but not the keyboard
+  final bool hideKeyboardUntilTapped;
+
   /// {@macro flutter.widgets.CodeEditableText.onChanged}
   ///
   /// See also:
@@ -390,6 +397,16 @@ class CodeTextField extends StatefulWidget {
   ///  * [onEditingComplete], [onSubmitted], [onSelectionChanged]:
   ///    which are more specialized input change notifications.
   final ValueChanged<String> onChanged;
+
+  // Trigger when backspace was pressed with value before backspace was pressed
+  final ValueChanged<CodeEditingValue> onBackSpacePress;
+
+  // Trigger when enter was pressed with value before enter was pressed
+  final ValueChanged<CodeEditingValue> onEnterPress;
+
+  /// Triggers after after paste action was performed on editor.
+  /// Use this callback to update line numbers if required.
+  final ValueChanged<CodeEditingValue> onPasteAction;
 
   /// {@macro flutter.widgets.CodeEditableText.onEditingComplete}
   final VoidCallback onEditingComplete;
@@ -577,16 +594,16 @@ class CodeTextFieldState extends State<CodeTextField>
   InteractiveInkFeature _currentSplash;
 
   CodeEditingController _controller;
-
   CodeEditingController get _effectiveController =>
       widget.controller ?? _controller;
 
   FocusNode _focusNode;
-
   FocusNode get _effectiveFocusNode =>
       widget.focusNode ?? (_focusNode ??= FocusNode());
 
   bool _isHovering = false;
+
+  bool _showKeyboard = false;
 
   bool get needsCounter =>
       widget.maxLength != null &&
@@ -721,47 +738,11 @@ class CodeTextFieldState extends State<CodeTextField>
     }
   }
 
-  InteractiveInkFeature _createInkFeature(Offset globalPosition) {
-    final MaterialInkController inkController = Material.of(context);
-    final ThemeData themeData = Theme.of(context);
-    final BuildContext editableContext = _codeEditableTextKey.currentContext;
-    final RenderBox referenceBox =
-        InputDecorator.containerOf(editableContext) ??
-            editableContext.findRenderObject();
-    final Offset position = referenceBox.globalToLocal(globalPosition);
-    final Color color = themeData.splashColor;
-
-    InteractiveInkFeature splash;
-    void handleRemoved() {
-      if (_splashes != null) {
-        assert(_splashes.contains(splash));
-        _splashes.remove(splash);
-        if (_currentSplash == splash) _currentSplash = null;
-        updateKeepAlive();
-      } // else we're probably in deactivate()
-    }
-
-    splash = themeData.splashFactory.create(
-      controller: inkController,
-      referenceBox: referenceBox,
-      position: position,
-      color: color,
-      containedInkWell: true,
-      // TODO(hansmuller): splash clip borderRadius should match the input decorator's border.
-      borderRadius: BorderRadius.zero,
-      onRemoved: handleRemoved,
-      textDirection: Directionality.of(context),
-    );
-
-    return splash;
-  }
-
   ce.RenderEditableCode get _renderEditable =>
       _codeEditableTextKey.currentState.renderEditable;
 
   void _handleTapDown(TapDownDetails details) {
     _renderEditable.handleTapDown(details);
-    _startSplash(details.globalPosition);
 
     // The selection overlay should only be shown when the user is interacting
     // through a touch screen (via either a finger or a stylus). A mouse shouldn't
@@ -786,8 +767,8 @@ class CodeTextFieldState extends State<CodeTextField>
   }
 
   void _handleSingleTapUp(TapUpDetails details) {
-    _codeEditableText
-        ?.hideToolbar(); //ensure toolbar is hidden if there was initially created
+    _codeEditableText?.enableShowKeyboard();
+    _codeEditableText?.hideToolbar(); //ensure toolbar is hidden if there was initially created
     if (widget.selectionEnabled) {
       switch (Theme.of(context).platform) {
         case TargetPlatform.iOS:
@@ -800,12 +781,10 @@ class CodeTextFieldState extends State<CodeTextField>
       }
     }
     _requestKeyboard();
-    _confirmCurrentSplash();
     if (widget.onTap != null) widget.onTap();
   }
 
   void _handleSingleTapCancel() {
-    _cancelCurrentSplash();
   }
 
   void _handleSingleLongTapStart(LongPressStartDetails details) {
@@ -824,7 +803,6 @@ class CodeTextFieldState extends State<CodeTextField>
           break;
       }
     }
-    _confirmCurrentSplash();
   }
 
   void _handleSingleLongTapMoveUpdate(LongPressMoveUpdateDetails details) {
@@ -869,7 +847,6 @@ class CodeTextFieldState extends State<CodeTextField>
       from: details.globalPosition,
       cause: ce.SelectionChangedCause.drag,
     );
-    _startSplash(details.globalPosition);
   }
 
   void _handleMouseDragSelectionUpdate(
@@ -881,24 +858,6 @@ class CodeTextFieldState extends State<CodeTextField>
       to: updateDetails.globalPosition,
       cause: ce.SelectionChangedCause.drag,
     );
-  }
-
-  void _startSplash(Offset globalPosition) {
-    if (_effectiveFocusNode.hasFocus) return;
-    final InteractiveInkFeature splash = _createInkFeature(globalPosition);
-    _splashes ??= HashSet<InteractiveInkFeature>();
-    _splashes.add(splash);
-    _currentSplash = splash;
-    updateKeepAlive();
-  }
-
-  void _confirmCurrentSplash() {
-    _currentSplash?.confirm();
-    _currentSplash = null;
-  }
-
-  void _cancelCurrentSplash() {
-    _currentSplash?.cancel();
   }
 
   @override
@@ -917,7 +876,6 @@ class CodeTextFieldState extends State<CodeTextField>
   }
 
   void _handlePointerEnter(PointerEnterEvent event) => _handleHover(true);
-
   void _handlePointerExit(PointerExitEvent event) => _handleHover(false);
 
   void _handleHover(bool hovering) {
@@ -1027,6 +985,10 @@ class CodeTextFieldState extends State<CodeTextField>
         selectionControls:
             widget.selectionEnabled ? textSelectionControls : null,
         onChanged: widget.onChanged,
+        hideKeyboardUntilTapped: widget.hideKeyboardUntilTapped,
+        onBackSpacePress: widget.onBackSpacePress,
+        onEnterPress: widget.onEnterPress,
+        onPasteAction: widget.onPasteAction,
         onSelectionChanged: _handleSelectionChanged,
         onEditingComplete: widget.onEditingComplete,
         onRectChanged: widget.onRectChanged,
