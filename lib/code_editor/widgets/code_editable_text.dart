@@ -963,6 +963,11 @@ class CodeEditableTextState extends State<CodeEditableText>
   }
 
   @override
+  void connectionClosed() {
+    //skip
+  }
+
+  @override
   void didUpdateWidget(CodeEditableText oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.controller != oldWidget.controller) {
@@ -1016,7 +1021,8 @@ class CodeEditableTextState extends State<CodeEditableText>
       return;
     }
 
-    if (_lastKnownRemoteCodeEditingValue.text == value.text && !pendingPasteUpdate) {
+    if (_lastKnownRemoteCodeEditingValue.text == value.text &&
+        !pendingPasteUpdate) {
       // There is no difference between this value and the last known value text.
       return;
     }
@@ -1056,7 +1062,7 @@ class CodeEditableTextState extends State<CodeEditableText>
       remotelyEdited: false,
     );
 
-    var pressedKey = KeyboardUtils.enterPressed(_value, newValue);    
+    var pressedKey = KeyboardUtils.enterPressed(_value, newValue);
 
     _lastKnownRemoteCodeEditingValue = newValue;
     _formatAndSetValue(newValue);
@@ -1064,7 +1070,7 @@ class CodeEditableTextState extends State<CodeEditableText>
     if (pressedKey == PressedKey.enter && widget.onEnterPress != null) {
       _enterPressed = true;
       widget.onEnterPress(oldValue);
-    }    
+    }
 
     if (pressedKey == PressedKey.backSpace && widget.onBackSpacePress != null)
       widget.onBackSpacePress(oldValue);
@@ -1204,9 +1210,9 @@ class CodeEditableTextState extends State<CodeEditableText>
     if (widget.onSubmitted != null) widget.onSubmitted(_value.text);
   }
 
+  DateTime _lastKeyPressedDuration;
 
-  DateTime _lastKeyPressedDuration;  
-  void _updateRemoteEditingValueIfNeeded() {    
+  void _updateRemoteEditingValueIfNeeded() {
     if (!_hasInputConnection) return;
     final CodeEditingValue localValue = _value;
     if (localValue == _lastKnownRemoteCodeEditingValue) return;
@@ -1216,7 +1222,7 @@ class CodeEditableTextState extends State<CodeEditableText>
     } else {
       var diffDuration =
           DateTime.now().difference(_lastKeyPressedDuration).inMilliseconds;
-      
+
       if (diffDuration < 100 && !_enterPressed && !localValue.remotelyEdited) {
         return;
       }
@@ -1522,7 +1528,7 @@ class CodeEditableTextState extends State<CodeEditableText>
       _textInputConnection.setEditingState(_toTextEditingValue(_parsed));
       _value = _parsed;
       pendingPasteUpdate = false;
-      if(widget.onPasteAction != null) widget.onPasteAction(value);
+      if (widget.onPasteAction != null) widget.onPasteAction(value);
       return;
     }
 
@@ -1623,8 +1629,7 @@ class CodeEditableTextState extends State<CodeEditableText>
     //update editing value required to be called during paste interaction and remotely edited condition
     if (pendingPasteUpdate) {
       _updateRemoteEditingValueIfNeeded();
-    } 
-    else if (_value != null) {
+    } else if (_value != null) {
       if ((_value.remotelyEdited != null && _value.remotelyEdited) ||
           (_lastKnownRemoteCodeEditingValue != null &&
               _value.text == _lastKnownRemoteCodeEditingValue.text &&
